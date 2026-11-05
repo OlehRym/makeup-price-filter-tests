@@ -122,3 +122,69 @@ export async function expectPriceFilterApplied(
     await expectCardsMatchPriceRange(await grid.readCards(), range, api, testInfo);
   }
 }
+
+/**
+ * Перевіряє сортування за ціною в межах відфільтрованої видачі.
+ *
+ * Ключ сортування на сайті — ціна варіанта, що потрапив у діапазон (для «від дешевих» — мінімальна,
+ * для «від дорогих» — максимальна), а картка показує ціну варіанта за замовчуванням.
+ * Тому там, де порядок цін на картках «ламається», ключ уточнюємо через варіанти товару.
+ * Залишкові порушення порядку — дефекти; допуск той самий, що й для перевірки діапазону.
+ */
+export async function expectSortedByPrice(
+  cards: ProductCard[],
+  range: PriceRange,
+  order: 'priceAsc' | 'priceDesc',
+  api: CatalogApi,
+  testInfo: TestInfo,
+): Promise<void> {
+  await test.step(`Товари відсортовані ${order === 'priceAsc' ? 'від дешевих' : 'від дорогих'}`, async () => {
+    const asc = order === 'priceAsc';
+    const items = cards
+      .filter((c): c is ProductCard & { price: number } => c.price !== null)
+      .map((c) => ({ ...c, key: c.price, refined: false }));
+    expect(items.length, 'Мають бути товари з ціною').toBeGreaterThan(1);
+
+    const outOfOrder = (prev: number, curr: number) => (asc ? curr < prev : curr > prev);
+    const refine = async (item: (typeof items)[number]) => {
+      if (item.refined) return;
+      item.refined = true;
+      const variants = ((await api.productDetails(item.id))?.variants ?? [])
+        .map((v) => v.price?.current)
+        .filter((p): p is number => typeof p === 'number' && p > 0 && isInRange(p, range));
+      if (variants.length) item.key = asc ? Math.min(...variants) : Math.max(...variants);
+    };
+
+    // Ціни поза діапазоном одразу уточнюємо — це точно не ключ сортування.
+    for (const item of items) if (!isInRange(item.price, range)) await refine(item);
+    for (let i = 1; i < items.length; i++) {
+      if (outOfOrder(items[i - 1].key, items[i].key)) {
+        await refine(items[i - 1]);
+        await refine(items[i]);
+      }
+    }
+
+    const inversions = items
+      .slice(1)
+      .map((item, i) => ({ prev: items[i], item }))
+      .filter(({ prev, item }) => outOfOrder(prev.key, item.key));
+    for (const { prev, item } of inversions) {
+      testInfo.annotations.push({
+        type: 'sort-defect',
+        description: `[${order} ${describeRange(range)}] #${prev.id} (${prev.key} ₴) → #${item.id} (${item.key} ₴)`,
+      });
+    }
+    expect(
+      inversions.length / (items.length - 1),
+      `Порушення порядку: ${inversions.map(({ prev, item }) => `${prev.key}→${item.key}`).join(', ')}`,
+    ).toBeLessThanOrEqual(env.priceMismatchTolerance);
+
+    // Перша ціна — не нижче нижньої межі, остання — не вище верхньої (TC-11).
+    const first = items[0].key;
+    const last = items.at(-1)!.key;
+    if (asc && range.from !== undefined) expect(first).toBeGreaterThanOrEqual(range.from);
+    if (!asc && range.to !== undefined) expect(first).toBeLessThanOrEqual(range.to);
+    if (asc && range.to !== undefined) expect(last).toBeLessThanOrEqual(range.to);
+    if (!asc && range.from !== undefined) expect(last).toBeGreaterThanOrEqual(range.from);
+  });
+}

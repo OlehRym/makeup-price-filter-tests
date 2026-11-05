@@ -38,11 +38,16 @@ export class PriceFilter {
     this.mobileClearButton = panel.getByRole('button', { name: /Очистити|Очистить/ });
   }
 
-  /** Робить блок ціни видимим і готовим до взаємодії на будь-якій платформі. */
-  async open(): Promise<void> {
-    if (this.isMobile && !(await this.fromInput.isVisible())) {
+  /** Mobile: відкрити шторку «Фільтр» (якщо ще закрита). Desktop: сайдбар і так видимий. */
+  async openPanel(): Promise<void> {
+    if (this.isMobile && !(await this.header.isVisible())) {
       await this.mobileOpenButton.click();
     }
+  }
+
+  /** Робить блок ціни видимим і готовим до взаємодії на будь-якій платформі. */
+  async open(): Promise<void> {
+    await this.openPanel();
     await expect(this.header, 'Секція «Вартість» має бути видимою').toBeVisible();
     // Секція може бути згорнута — розгортаємо лише за потреби (клік по заголовку — toggle).
     if (!(await this.presets.first().isVisible())) {
@@ -62,6 +67,11 @@ export class PriceFilter {
   /** Закрити шторку без змін (mobile); на desktop — нічого. */
   async close(): Promise<void> {
     if (this.isMobile && (await this.fromInput.isVisible())) await this.confirm();
+  }
+
+  /** Згорнути/розгорнути акордеон «Вартість». */
+  async toggleSection(): Promise<void> {
+    await this.header.click();
   }
 
   async presetLabels(): Promise<string[]> {

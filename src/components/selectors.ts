@@ -15,6 +15,16 @@ export const sel = {
   },
   filters: {
     panel: '.Filters__filters',
+    /** Блок «Бренд» (заголовок-кнопка + контент з алфавітом і чекбоксами). */
+    brandHeader: '.FilterItemAlphabet__button',
+    /** Опція бренду — посилання /ua/brand/{id}/ з чекбоксом усередині (віртуалізований список). */
+    brandOption: '.FilterBrandOptionRow__option',
+  },
+  sorting: {
+    desktopButton: '.SortingMenu__button',
+  },
+  pagination: {
+    pages: '.Pagination__pages',
   },
   products: {
     total: '.Products__total',

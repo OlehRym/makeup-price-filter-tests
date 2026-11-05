@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page, type Response } from '@playwright/test';
 import { categoryIdFromPath, isProductsListFor, type ProductsListResponse } from '../api/catalog-api';
+import { BrandFilter, type BrandOption } from '../components/brand-filter';
 import { PriceFilter } from '../components/price-filter';
 import { ProductGrid } from '../components/product-grid';
 import { sel } from '../components/selectors';
@@ -7,8 +8,16 @@ import { env } from '../config/env';
 import type { PriceRange } from '../utils/price';
 
 /** Сторінка категорії каталогу (за замовчуванням — «Парфумерія»). */
+export type SortOrder = 'priceAsc' | 'priceDesc';
+
+const SORT_LABELS: Record<SortOrder, RegExp> = {
+  priceAsc: /^\s*(Від найдешевших|От дешевых)/i,
+  priceDesc: /^\s*(Від найдорожчих|От дорогих)/i,
+};
+
 export class CategoryPage {
   readonly priceFilter: PriceFilter;
+  readonly brandFilter: BrandFilter;
   readonly grid: ProductGrid;
   readonly priceTag: Locator;
   readonly clearAllTagsButton: Locator;
@@ -21,6 +30,7 @@ export class CategoryPage {
   ) {
     this.categoryId = categoryIdFromPath(path);
     this.priceFilter = new PriceFilter(page, isMobile);
+    this.brandFilter = new BrandFilter(page, this.priceFilter);
     this.grid = new ProductGrid(page);
     // Тег обраного фільтра над сіткою: «від 500 до 750», «від 300», «до 400».
     this.priceTag = page.locator(sel.tags.tag).filter({ hasText: /^\s*(від|до|от)\s+\d/ });
@@ -87,10 +97,17 @@ export class CategoryPage {
    * Дія повторюється (toPass), якщо запит не пішов: одразу після гідратації клієнт
    * ще може перерендерити фільтр і «з'їсти» ввід. Повтор безпечний — дія ідемпотентна.
    */
-  async applyPriceFilter(range: PriceRange, action: () => Promise<void>): Promise<ProductsListResponse> {
+  async applyPriceFilter(
+    range: PriceRange,
+    action: () => Promise<void>,
+    options: { offset?: number; extra?: Record<string, string> } = {},
+  ): Promise<ProductsListResponse> {
     let body: ProductsListResponse | undefined;
     await expect(async () => {
-      const responsePromise = this.page.waitForResponse(this.productsResponse(range), { timeout: 8_000 });
+      const responsePromise = this.page.waitForResponse(
+        this.productsResponse(range, options.offset, options.extra),
+        { timeout: 8_000 },
+      );
       responsePromise.catch(() => undefined); // уникаємо unhandled rejection, якщо action впаде
       await action();
       body = await this.readBody(await responsePromise);
@@ -141,8 +158,51 @@ export class CategoryPage {
   }
 
   /** Предикат відповіді API списку товарів ЦІЄЇ категорії з заданим діапазоном. */
-  productsResponse(range: PriceRange, offset = 0): (response: Response) => boolean {
-    return isProductsListFor(this.categoryId, range, offset);
+  productsResponse(range: PriceRange, offset = 0, extra: Record<string, string> = {}): (response: Response) => boolean {
+    return isProductsListFor(this.categoryId, range, offset, extra);
+  }
+
+  /** Сортування видачі (desktop — випадаюче меню, mobile — нижня шторка). */
+  async sortBy(order: SortOrder): Promise<ProductsListResponse> {
+    const range = this.priceStateFromUrl();
+    return this.applyPriceFilter(
+      range,
+      async () => {
+        const opener = this.isMobile
+          ? this.page.getByRole('button', { name: /Сортування|Сортировка/ })
+          : this.page.locator(sel.sorting.desktopButton);
+        await opener.click();
+        await this.page.getByText(SORT_LABELS[order]).filter({ visible: true }).first().click();
+      },
+      { extra: { sort: order } },
+    );
+  }
+
+  /** Перехід на сторінку пагінації з номером n (заміна видачі, а не довантаження). */
+  async goToPage(n: number, perPage: number): Promise<ProductsListResponse> {
+    const range = this.priceStateFromUrl();
+    return this.applyPriceFilter(
+      range,
+      () => this.page.locator(sel.pagination.pages).getByRole('link', { name: String(n), exact: true }).click(),
+      { offset: (n - 1) * perPage },
+    );
+  }
+
+  /** Обрати бренд і дочекатися видачі (параметр filters у запиті). */
+  async chooseBrand(brand: BrandOption): Promise<ProductsListResponse> {
+    const range = this.priceStateFromUrl();
+    let body: ProductsListResponse | undefined;
+    await expect(async () => {
+      const responsePromise = this.page.waitForResponse(
+        (r) => this.productsResponse(range)(r) && new URL(r.url()).searchParams.has('filters'),
+        { timeout: 8_000 },
+      );
+      responsePromise.catch(() => undefined);
+      await this.brandFilter.check(brand);
+      body = await this.readBody(await responsePromise);
+    }).toPass({ timeout: 45_000, intervals: [500, 1_000, 2_000] });
+    await this.grid.waitForRendered(body!);
+    return body!;
   }
 
   /** Перезавантажити сторінку й повернути відповідь API для поточного фільтра з URL. */
@@ -162,6 +222,11 @@ export class CategoryPage {
     const params = new URLSearchParams(hash);
     const toNum = (v: string | null) => (v === null ? undefined : Number(v));
     return { from: toNum(params.get('price_from')), to: toNum(params.get('price_to')) };
+  }
+
+  /** Сирі параметри hash (sort, offset, o[...] тощо). */
+  hashParams(): URLSearchParams {
+    return new URLSearchParams(new URL(this.page.url()).hash.replace(/^#/, ''));
   }
 
   private async readBody(response: Response): Promise<ProductsListResponse> {

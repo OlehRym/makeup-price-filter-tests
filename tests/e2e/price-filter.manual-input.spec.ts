@@ -70,12 +70,12 @@ test.describe('Фільтр «Ціна» — ручне введення «Ві�
     await expect(categoryPage.priceTag).toContainText(String(range.from));
   });
 
-  test('поля приймають лише цифри', async ({ categoryPage }) => {
+  test('поля приймають лише цифри (мінус, літери, спецсимволи, «e» відкидаються)', async ({ categoryPage }) => {
     const { priceFilter } = categoryPage;
     await priceFilter.open();
 
     for (const field of ['from', 'to'] as const) {
-      for (const input of ['abc', '12a3', '-100', '1.5', '1 000', '₴500']) {
+      for (const input of ['abc', '12a3', '-100', '!@#$%', 'e', '1e3', '1 000', '₴500']) {
         const value = await priceFilter.typeInto(field, input);
         expect(value, `«${field}» після вводу "${input}"`).toMatch(/^\d*$/);
       }

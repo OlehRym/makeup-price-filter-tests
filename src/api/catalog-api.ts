@@ -16,6 +16,7 @@ export interface ApiProduct {
   id: number;
   type: 'product';
   title: string;
+  brand: { id: number; title: string };
   inStock: boolean;
   price: ApiPrice;
   hasVariants?: boolean;
@@ -66,12 +67,23 @@ export function priceParamsOf(url: string): PriceRange & { offset: number } {
  * і саме з цим діапазоном. Точне порівняння важливе: на сторінці є блоки інших
  * категорій, а також запити від попереднього стану фільтра.
  */
-export function isProductsListFor(categoryId: number, range: PriceRange, offset = 0) {
+export function isProductsListFor(
+  categoryId: number,
+  range: PriceRange,
+  offset = 0,
+  extra: Record<string, string> = {},
+) {
   return (response: Response): boolean => {
     const url = response.url();
     if (new URL(url).pathname !== productsListPath(categoryId) || response.request().method() !== 'GET') return false;
     const params = priceParamsOf(url);
-    return params.from === range.from && params.to === range.to && params.offset === offset;
+    const search = new URL(url).searchParams;
+    return (
+      params.from === range.from &&
+      params.to === range.to &&
+      params.offset === offset &&
+      Object.entries(extra).every(([key, value]) => search.get(key) === value)
+    );
   };
 }
 
@@ -97,6 +109,15 @@ export class CatalogApi {
       cached.catch(() => productDetailsCache.delete(id));
     }
     return cached;
+  }
+
+  /** Кількість товарів у наявності для діапазону — щоб порівняти з тим, що показав UI. */
+  async availableCount(categoryId: number, range: PriceRange): Promise<number> {
+    const params = new URLSearchParams({ offset: '0' });
+    if (range.from !== undefined) params.set('priceFrom', String(range.from));
+    if (range.to !== undefined) params.set('priceTo', String(range.to));
+    const response = await this.request.get(`${this.baseUrl}${productsListPath(categoryId)}?${params}`, { timeout: 30_000 });
+    return ((await response.json()) as ProductsListResponse).availableCount;
   }
 
   private async fetchProductDetails(id: number, attempts = 3): Promise<ProductDetailsResponse | null> {
