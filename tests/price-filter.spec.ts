@@ -1,16 +1,22 @@
 import { test, expect } from '../src/fixtures';
+import { PRICE_PRESETS } from '../src/data/price-presets';
+import { expectPricesInRange } from '../src/assertions/price';
 
-test('пресет «50 ₴ - 100 ₴» показує лише товари в цьому діапазоні', async ({ categoryPage }) => {
-  await categoryPage.open();
-  await categoryPage.applyPricePreset('50 ₴ - 100 ₴');
+test.describe('Фільтр «Ціна»: пресети', () => {
+  for (const preset of PRICE_PRESETS) {
+    test(`пресет «${preset.name}» показує лише товари в діапазоні`, async ({ categoryPage }) => {
+      await categoryPage.open();
+      await categoryPage.applyPricePreset(preset.name);
 
-  await expect(categoryPage.page).toHaveURL(/price_from=50&price_to=100/);
+      // URL: є лише ті межі, які має пресет
+      if (preset.from !== undefined) {
+        await expect(categoryPage.page).toHaveURL(new RegExp(`price_from=${preset.from}(&|$)`));
+      }
+      if (preset.to !== undefined) {
+        await expect(categoryPage.page).toHaveURL(new RegExp(`price_to=${preset.to}(&|$)`));
+      }
 
-  const prices = await categoryPage.getPrices();
-  expect(prices.length, 'на сторінці мають бути товари').toBeGreaterThan(0);
-
-  for (const price of prices) {
-    expect(price).toBeGreaterThanOrEqual(50);
-    expect(price).toBeLessThanOrEqual(100);
+      expectPricesInRange(await categoryPage.getPrices(), preset);
+    });
   }
 });
