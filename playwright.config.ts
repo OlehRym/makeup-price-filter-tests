@@ -31,11 +31,11 @@ export default defineConfig({
       name: 'desktop-max',
       use: {
         ...devices['Desktop Chrome'],
-        viewport: null,
-        deviceScaleFactor: undefined,
-        launchOptions: { args: ['--start-maximized'] },
+        // viewport: null + --start-maximized у headless дає вікно 800×600,
+        // і сайт перемикається на мобільну верстку. Тому задаємо розмір явно.
+        viewport: { width: 1920, height: 1080 },
       },
-   },
+    },
     {
       name: 'mobile',
       use: { ...devices['Pixel 7'] },
