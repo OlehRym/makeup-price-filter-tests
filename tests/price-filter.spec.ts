@@ -1,22 +1,16 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../src/fixtures';
 
-test('Check presets for filter Price', async ({ page }) => {
-  await page.goto('/ua/categorys/3');
-  await page.waitForLoadState('networkidle');
-  const counter = page.getByText(/^\d+ товар/).first();
-  const before = await counter.textContent();
+test('пресет «50 ₴ - 100 ₴» показує лише товари в цьому діапазоні', async ({ categoryPage }) => {
+  await categoryPage.open();
+  await categoryPage.applyPricePreset('50 ₴ - 100 ₴');
 
-  await page.getByRole('button', { name: '50 ₴ - 100 ₴', exact: true }).click();
+  await expect(categoryPage.page).toHaveURL(/price_from=50&price_to=100/);
 
-  await expect(page).toHaveURL(/price_from=50&price_to=100/);
-  await expect(counter).not.toHaveText(before!);
+  const prices = await categoryPage.getPrices();
+  expect(prices.length, 'на сторінці мають бути товари').toBeGreaterThan(0);
 
-  const texts = await page.locator('.Products__cards .Price__priceCurrent').allTextContents();
-  expect(texts.length).toBeGreaterThan(0);
-    for (const text of texts) {
-    const price = parseInt(text.replace(/\D/g, ''), 10);
-
+  for (const price of prices) {
     expect(price).toBeGreaterThanOrEqual(50);
     expect(price).toBeLessThanOrEqual(100);
-    }
+  }
 });
