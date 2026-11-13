@@ -1,0 +1,24 @@
+{
+  "name": "makeup",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "devDependencies": {
+    "@playwright/test": "^1.65.0",
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2"
+  },
+  "scripts": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OlehRym/makeup-price-filter-tests.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/OlehRym/makeup-price-filter-tests/issues"
+  },
+  "homepage": "https://github.com/OlehRym/makeup-price-filter-tests#readme"
+}
